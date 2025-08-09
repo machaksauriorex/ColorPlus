@@ -27,9 +27,27 @@ jobs:
         (Get-Content ColorPlus.csproj) -replace '<TargetFrameworkVersion>v4.5</TargetFrameworkVersion>', '<TargetFrameworkVersion>v4.8</TargetFrameworkVersion>' | Set-Content ColorPlus.csproj
         Write-Host "Updated target framework from v4.5 to v4.8"
       
+    - name: Create packages.config if missing
+      working-directory: ColorPlus
+      run: |
+        if (-not (Test-Path "packages.config")) {
+          @"
+        <?xml version="1.0" encoding="utf-8"?>
+        <packages>
+          <package id="Harmony" version="0.3.0" targetFramework="net48" />
+          <package id="Splat" version="1.6.2" targetFramework="net48" />
+          <package id="RhinoCommon" version="6.35.21222.17001" targetFramework="net48" />
+          <package id="Grasshopper" version="6.35.21222.17001" targetFramework="net48" />
+        </packages>
+        "@ | Out-File -FilePath "packages.config" -Encoding UTF8
+        }
+      
     - name: Restore NuGet packages
       working-directory: ColorPlus
-      run: nuget restore ColorPlus.sln
+      run: |
+        nuget restore ColorPlus.sln
+        nuget install Harmony -Version 0.3.0 -OutputDirectory packages
+        nuget install Splat -Version 1.6.2 -OutputDirectory packages
       
     - name: Build solution
       working-directory: ColorPlus
