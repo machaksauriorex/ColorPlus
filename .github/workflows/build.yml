@@ -49,6 +49,48 @@ jobs:
         nuget install Harmony -Version 0.3.0 -OutputDirectory packages
         nuget install Splat -Version 1.6.2 -OutputDirectory packages
       
+    - name: Copy dependencies to output
+      working-directory: ColorPlus
+      run: |
+        # Crear directorio de salida si no existe
+        if (-not (Test-Path "bin")) { New-Item -ItemType Directory -Path "bin" }
+        
+        Write-Host "Looking for dependency files..."
+        
+        # Buscar y copiar Harmony.dll
+        $harmonyPaths = Get-ChildItem -Path "." -Recurse -Filter "Harmony.dll" -ErrorAction SilentlyContinue
+        Write-Host "Found Harmony.dll files: $($harmonyPaths.Count)"
+        foreach ($path in $harmonyPaths) {
+          Write-Host "  - $($path.FullName)"
+        }
+        
+        if ($harmonyPaths) {
+          $harmonyPath = $harmonyPaths[0]
+          Copy-Item $harmonyPath.FullName "bin\Harmony.dll" -Force
+          Write-Host "Copied Harmony.dll to bin folder"
+        } else {
+          Write-Host "Harmony.dll not found"
+        }
+        
+        # Buscar y copiar Splat.dll
+        $splatPaths = Get-ChildItem -Path "." -Recurse -Filter "Splat.dll" -ErrorAction SilentlyContinue
+        Write-Host "Found Splat.dll files: $($splatPaths.Count)"
+        foreach ($path in $splatPaths) {
+          Write-Host "  - $($path.FullName)"
+        }
+        
+        if ($splatPaths) {
+          $splatPath = $splatPaths[0]
+          Copy-Item $splatPath.FullName "bin\Splat.dll" -Force
+          Write-Host "Copied Splat.dll to bin folder"
+        } else {
+          Write-Host "Splat.dll not found"
+        }
+        
+        # Verificar contenido del directorio bin
+        Write-Host "Contents of bin directory:"
+        Get-ChildItem "bin" | ForEach-Object { Write-Host "  - $($_.Name)" }
+      
     - name: Build solution
       working-directory: ColorPlus
       run: msbuild ColorPlus.sln /p:Configuration=Release /p:Platform="Any CPU"
@@ -57,7 +99,10 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: ColorPlus-Plugin
-        path: ColorPlus/bin/ColorPlus.gha
+        path: |
+          ColorPlus/bin/ColorPlus.gha
+          ColorPlus/bin/Harmony.dll
+          ColorPlus/bin/Splat.dll
         
     - name: Create Release (on tag)
       if: startsWith(github.ref, 'refs/tags/')
