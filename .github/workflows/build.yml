@@ -1,0 +1,49 @@
+name: Build ColorPlus
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v1
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v1
+
+      - name: Find solution file
+        shell: powershell
+        run: |
+          $sln = Get-ChildItem -Path . -Filter *.sln -Recurse | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $sln) { Write-Error "No .sln found in repository." }
+          Write-Output $sln > solution-path.txt
+          Write-Host "Found solution: $sln"
+
+      - name: Restore NuGet packages
+        shell: powershell
+        run: |
+          $sln = Get-Content solution-path.txt
+          nuget restore $sln
+
+      - name: Build solution (Release / x64)
+        shell: powershell
+        run: |
+          $sln = Get-Content solution-path.txt
+          msbuild $sln /p:Configuration=Release /p:Platform=x64 /m
+
+      - name: List produced .gha (debug)
+        shell: powershell
+        run: |
+          Get-ChildItem -Path . -Include *.gha -Recurse | ForEach-Object { Write-Host "Found: $($_.FullName)" } || Write-Host "No .gha found yet."
+
+      - name: Upload artifact (.gha)
+        uses: actions/upload-artifact@v3
+        with:
+          name: ColorPlus-gha
+          path: '**/bin/**/Release/*.gha'
