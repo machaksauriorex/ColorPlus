@@ -21,13 +21,11 @@ jobs:
     - name: Setup NuGet
       uses: nuget/setup-nuget@v2
       
-    - name: Install .NET Framework 4.5.2 Developer Pack
+    - name: Update target framework to 4.8
+      working-directory: ColorPlus
       run: |
-        Write-Host "Downloading .NET Framework 4.5.2 Developer Pack..."
-        Invoke-WebRequest -Uri "https://download.microsoft.com/download/4/3/B/43B61315-B2CE-4F5B-9E32-34CCA07B2F0E/NDP452-KB2901951-x86-x64-DevPack.exe" -OutFile "NDP452-KB2901951-x86-x64-DevPack.exe"
-        Write-Host "Installing .NET Framework 4.5.2 Developer Pack..."
-        Start-Process -FilePath "NDP452-KB2901951-x86-x64-DevPack.exe" -ArgumentList "/quiet", "/norestart" -Wait
-        Write-Host "Installation completed."
+        (Get-Content ColorPlus.csproj) -replace '<TargetFrameworkVersion>v4.5</TargetFrameworkVersion>', '<TargetFrameworkVersion>v4.8</TargetFrameworkVersion>' | Set-Content ColorPlus.csproj
+        Write-Host "Updated target framework from v4.5 to v4.8"
       
     - name: Restore NuGet packages
       working-directory: ColorPlus
