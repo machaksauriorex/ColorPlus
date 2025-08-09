@@ -1,62 +1,138 @@
-name: Build ColorPlus for Grasshopper
+name: Build ColorPlus
 
 on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
-  workflow_dispatch: # Permite ejecutar manualmente
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: windows-latest
     
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Setup .NET Framework
-      uses: microsoft/setup-msbuild@v1.3.1
-      
-    - name: Setup NuGet
-      uses: nuget/setup-nuget@v1
-      with:
-        nuget-version: 'latest'
-    
-    - name: Restore NuGet packages
-      run: nuget restore ColorPlus.sln
-      
-    - name: Build solution
-      run: msbuild ColorPlus.sln /p:Configuration=Release /p:Platform="Any CPU"
-      
-    - name: Find and copy .gha file
-      run: |
-        # Buscar el archivo .gha generado
-        $ghaFile = Get-ChildItem -Recurse -Filter "*.gha" | Select-Object -First 1
-        if ($ghaFile) {
-          Write-Host "Archivo .gha encontrado: $($ghaFile.FullName)"
-          # Crear directorio para artifacts si no existe
-          New-Item -ItemType Directory -Force -Path ".\release"
-          # Copiar el archivo .gha al directorio release
-          Copy-Item $ghaFile.FullName ".\release\ColorPlus.gha"
-          Write-Host "Archivo copiado a: .\release\ColorPlus.gha"
-        } else {
-          Write-Host "No se encontró archivo .gha"
-          exit 1
-        }
-      shell: powershell
-      
-    - name: Upload .gha artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: ColorPlus-gha
-        path: ./release/ColorPlus.gha
-        retention-days: 30
+      - name: Checkout code
+        uses: actions/checkout@v4
         
-    - name: Create Release (on tag)
-      if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v1
-      with:
-        files: ./release/ColorPlus.gha
-        generate_release_notes: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v1
+        
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v1
+        
+      - name: List repository structure (debug)
+        shell: powershell
+        run: |
+          Write-Host "Repository structure:"
+          Get-ChildItem -Recurse | Select-Object FullName | ForEach-Object { Write-Host $_.FullName }
+          
+      - name: Find solution and project files
+        shell: powershell
+        run: |
+          # Buscar archivos .sln
+          $slnFiles = Get-ChildItem -Path . -Filter *.sln -Recurse
+          Write-Host "Found .sln files:"
+          $slnFiles | ForEach-Object { Write-Host "  $($_.FullName)" }
+          
+          # Buscar archivos .csproj
+          $csprojFiles = Get-ChildItem -Path . -Filter *.csproj -Recurse
+          Write-Host "Found .csproj files:"
+          $csprojFiles | ForEach-Object { Write-Host "  $($_.FullName)" }
+          
+          # Determinar qué compilar
+          if ($slnFiles.Count -gt 0) {
+            $buildTarget = $slnFiles[0].FullName
+            Write-Host "Will build solution: $buildTarget"
+          } elseif ($csprojFiles.Count -gt 0) {
+            $buildTarget = $csprojFiles[0].FullName
+            Write-Host "Will build project: $buildTarget"
+          } else {
+            Write-Error "No .sln or .csproj files found!"
+            exit 1
+          }
+          
+          # Guardar la ruta para los siguientes steps
+          $buildTarget | Out-File -FilePath "build-target.txt" -Encoding utf8
+          
+      - name: Restore NuGet packages
+        shell: powershell
+        run: |
+          $buildTarget = Get-Content "build-target.txt"
+          Write-Host "Restoring packages for: $buildTarget"
+          
+          if ($buildTarget.EndsWith(".sln")) {
+            nuget restore $buildTarget
+          } else {
+            nuget restore $buildTarget
+          }
+          
+      - name: Build project
+        shell: powershell
+        run: |
+          $buildTarget = Get-Content "build-target.txt"
+          Write-Host "Building: $buildTarget"
+          
+          # Intentar con diferentes configuraciones de plataforma
+          try {
+            Write-Host "Trying build with Platform=x64..."
+            msbuild $buildTarget /p:Configuration=Release /p:Platform=x64 /m
+          } catch {
+            Write-Host "x64 failed, trying Any CPU..."
+            msbuild $buildTarget /p:Configuration=Release /p:Platform="Any CPU" /m
+          }
+          
+      - name: List all build outputs (debug)
+        shell: powershell
+        run: |
+          Write-Host "Searching for build outputs..."
+          Get-ChildItem -Path . -Recurse | Where-Object { 
+            $_.Extension -eq ".gha" -or 
+            $_.Extension -eq ".dll" -or 
+            ($_.Directory.Name -eq "Release" -and $_.Extension -eq ".exe")
+          } | ForEach-Object { 
+            Write-Host "Found build output: $($_.FullName)" 
+          }
+          
+      - name: Find and prepare .gha file
+        shell: powershell
+        run: |
+          # Buscar archivo .gha
+          $ghaFiles = Get-ChildItem -Path . -Filter "*.gha" -Recurse
+          
+          if ($ghaFiles.Count -eq 0) {
+            Write-Host "No .gha file found directly. Looking for DLL files that might be renamed..."
+            
+            # Buscar en carpetas de Release
+            $releaseDlls = Get-ChildItem -Path . -Recurse | Where-Object { 
+              $_.Extension -eq ".dll" -and 
+              $_.Directory.Name -eq "Release" -and
+              $_.Name -like "*ColorPlus*"
+            }
+            
+            if ($releaseDlls.Count -gt 0) {
+              $sourceDll = $releaseDlls[0]
+              Write-Host "Found DLL to convert: $($sourceDll.FullName)"
+              
+              # Crear directorio release
+              New-Item -ItemType Directory -Force -Path ".\release"
+              
+              # Copiar DLL como .gha
+              $targetPath = ".\release\ColorPlus.gha"
+              Copy-Item $sourceDll.FullName $targetPath
+              Write-Host "Copied DLL as GHA: $targetPath"
+            } else {
+              Write-Error "No suitable files found for .gha creation"
+              exit 1
+            }
+          } else {
+            Write-Host "Found .gha file: $($ghaFiles[0].FullName)"
+            # Crear directorio release
+            New-Item -ItemType Directory -Force -Path ".\release"
+            # Copiar archivo .gha
+            Copy-Item $ghaFiles[0].FullName ".\release\ColorPlus.gha"
+            Write-Host "Copied .gha file to release directory"
+          }
+          
+      - name: Upload .gha artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ColorPlus-gha
+          path: ./release/ColorPlus.gha
+          retention-days: 30
