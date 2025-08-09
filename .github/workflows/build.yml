@@ -17,6 +17,22 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v1
         
+      - name: Install .NET Framework 4.5 Developer Pack
+        shell: powershell
+        run: |
+          Write-Host "Downloading .NET Framework 4.5 Developer Pack..."
+          $url = "https://download.microsoft.com/download/B/4/1/B4119C11-0423-477B-80EE-7A474314B347/NDP452-KB2901954-Web.exe"
+          $output = "NDP452-KB2901954-Web.exe"
+          
+          # Descargar el instalador
+          Invoke-WebRequest -Uri $url -OutFile $output
+          
+          Write-Host "Installing .NET Framework 4.5.2 Developer Pack..."
+          # Instalar silenciosamente
+          Start-Process -FilePath $output -ArgumentList "/quiet" -Wait
+          
+          Write-Host ".NET Framework 4.5.2 Developer Pack installed successfully"
+        
       - name: List repository structure (debug)
         shell: powershell
         run: |
@@ -69,49 +85,15 @@ jobs:
           $buildTarget = Get-Content "build-target.txt"
           Write-Host "Building: $buildTarget"
           
-          # Configurar para que PowerShell trate errores de MSBuild como excepciones
-          $ErrorActionPreference = "Stop"
-          
-          # Intentar con diferentes configuraciones de plataforma
-          $buildSucceeded = $false
-          
           # Primer intento: Release|Any CPU (basado en tu .sln)
-          try {
-            Write-Host "Trying build with Configuration=Release Platform='Any CPU'..."
-            msbuild $buildTarget /p:Configuration=Release /p:Platform="Any CPU" /m
-            $buildSucceeded = $true
-            Write-Host "Build succeeded with Any CPU platform"
-          } catch {
-            Write-Host "Any CPU build failed: $($_.Exception.Message)"
-          }
+          Write-Host "Building with Configuration=Release Platform='Any CPU'..."
+          msbuild $buildTarget /p:Configuration=Release /p:Platform="Any CPU" /m
           
-          # Segundo intento: Solo Release sin especificar Platform
-          if (-not $buildSucceeded) {
-            try {
-              Write-Host "Trying build with Configuration=Release (no platform specified)..."
-              msbuild $buildTarget /p:Configuration=Release /m
-              $buildSucceeded = $true
-              Write-Host "Build succeeded with default platform"
-            } catch {
-              Write-Host "Default platform build failed: $($_.Exception.Message)"
-            }
-          }
-          
-          # Tercer intento: x64 por si acaso
-          if (-not $buildSucceeded) {
-            try {
-              Write-Host "Trying build with Configuration=Release Platform=x64..."
-              msbuild $buildTarget /p:Configuration=Release /p:Platform=x64 /m
-              $buildSucceeded = $true
-              Write-Host "Build succeeded with x64 platform"
-            } catch {
-              Write-Host "x64 platform build failed: $($_.Exception.Message)"
-            }
-          }
-          
-          if (-not $buildSucceeded) {
-            Write-Error "All build attempts failed!"
-            exit 1
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Build succeeded!"
+          } else {
+            Write-Error "Build failed with exit code $LASTEXITCODE"
+            exit $LASTEXITCODE
           }
           
       - name: List all build outputs (debug)
