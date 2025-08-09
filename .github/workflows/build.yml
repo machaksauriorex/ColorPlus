@@ -22,10 +22,10 @@ jobs:
       uses: nuget/setup-nuget@v2
       
     - name: Restore NuGet packages
-      run: nuget restore ColorPlus.sln
+      run: nuget restore ColorPlus/ColorPlus.sln
       
     - name: Build solution
-      run: msbuild ColorPlus.sln /p:Configuration=Release /p:Platform="Any CPU"
+      run: msbuild ColorPlus/ColorPlus.sln /p:Configuration=Release /p:Platform="Any CPU"
       
     - name: Upload GHA artifact
       uses: actions/upload-artifact@v4
