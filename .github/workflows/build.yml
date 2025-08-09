@@ -69,13 +69,49 @@ jobs:
           $buildTarget = Get-Content "build-target.txt"
           Write-Host "Building: $buildTarget"
           
+          # Configurar para que PowerShell trate errores de MSBuild como excepciones
+          $ErrorActionPreference = "Stop"
+          
           # Intentar con diferentes configuraciones de plataforma
+          $buildSucceeded = $false
+          
+          # Primer intento: Release|Any CPU (basado en tu .sln)
           try {
-            Write-Host "Trying build with Platform=x64..."
-            msbuild $buildTarget /p:Configuration=Release /p:Platform=x64 /m
-          } catch {
-            Write-Host "x64 failed, trying Any CPU..."
+            Write-Host "Trying build with Configuration=Release Platform='Any CPU'..."
             msbuild $buildTarget /p:Configuration=Release /p:Platform="Any CPU" /m
+            $buildSucceeded = $true
+            Write-Host "Build succeeded with Any CPU platform"
+          } catch {
+            Write-Host "Any CPU build failed: $($_.Exception.Message)"
+          }
+          
+          # Segundo intento: Solo Release sin especificar Platform
+          if (-not $buildSucceeded) {
+            try {
+              Write-Host "Trying build with Configuration=Release (no platform specified)..."
+              msbuild $buildTarget /p:Configuration=Release /m
+              $buildSucceeded = $true
+              Write-Host "Build succeeded with default platform"
+            } catch {
+              Write-Host "Default platform build failed: $($_.Exception.Message)"
+            }
+          }
+          
+          # Tercer intento: x64 por si acaso
+          if (-not $buildSucceeded) {
+            try {
+              Write-Host "Trying build with Configuration=Release Platform=x64..."
+              msbuild $buildTarget /p:Configuration=Release /p:Platform=x64 /m
+              $buildSucceeded = $true
+              Write-Host "Build succeeded with x64 platform"
+            } catch {
+              Write-Host "x64 platform build failed: $($_.Exception.Message)"
+            }
+          }
+          
+          if (-not $buildSucceeded) {
+            Write-Error "All build attempts failed!"
+            exit 1
           }
           
       - name: List all build outputs (debug)
