@@ -31,11 +31,11 @@ jobs:
           $sln = Get-Content solution-path.txt
           nuget restore $sln
 
-      - name: Build solution (Release / x64)
+      - name: Build solution (Release / Any CPU)
         shell: powershell
         run: |
           $sln = Get-Content solution-path.txt
-          msbuild $sln /p:Configuration=Release /p:Platform=x64 /m
+          msbuild $sln /p:Configuration=Release /p:Platform="Any CPU" /m
 
       - name: List produced .gha (debug)
         shell: powershell
