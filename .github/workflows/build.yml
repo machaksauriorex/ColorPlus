@@ -11,29 +11,67 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         
+      - name: Setup .NET Framework
+        uses: microsoft/setup-msbuild@v1
+        
       - name: Setup NuGet
         uses: NuGet/setup-nuget@v1
         
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v1
-        
-      - name: Install .NET Framework 4.5 Developer Pack
+      - name: Install .NET Framework targeting packs
         shell: powershell
         run: |
-          Write-Host "Downloading .NET Framework 4.5 Developer Pack..."
-          $url = "https://download.microsoft.com/download/B/4/1/B4119C11-0423-477B-80EE-7A474314B347/NDP452-KB2901954-Web.exe"
-          $output = "NDP452-KB2901954-Web.exe"
+          # Instalar múltiples targeting packs disponibles
+          Write-Host "Installing .NET Framework targeting packs..."
           
-          # Descargar el instalador
-          Invoke-WebRequest -Uri $url -OutFile $output
+          # .NET Framework 4.6.2 (compatible con 4.5+)
+          choco install netfx-4.6.2-devpack -y
           
-          Write-Host "Installing .NET Framework 4.5.2 Developer Pack..."
-          # Instalar silenciosamente
-          Start-Process -FilePath $output -ArgumentList "/quiet" -Wait
+          # También intentar con 4.7.2 por si acaso
+          choco install netfx-4.7.2-devpack -y
           
-          Write-Host ".NET Framework 4.5.2 Developer Pack installed successfully"
+          Write-Host "Targeting packs installed"
+          
+      - name: Modify project to use .NET Framework 4.6.2
+        shell: powershell
+        run: |
+          # Buscar archivos .csproj y actualizar el TargetFrameworkVersion
+          Get-ChildItem -Path . -Filter "*.csproj" -Recurse | ForEach-Object {
+            $csprojPath = $_.FullName
+            Write-Host "Updating $csprojPath"
+            
+            $content = Get-Content $csprojPath -Raw
+            
+            # Reemplazar .NET Framework 4.5 con 4.6.2
+            $content = $content -replace '<TargetFrameworkVersion>v4\.5</TargetFrameworkVersion>', '<TargetFrameworkVersion>v4.6.2</TargetFrameworkVersion>'
+            
+            # También reemplazar referencias que puedan estar hardcodeadas
+            $content = $content -replace 'Version=4\.5\.', 'Version=4.6.2.'
+            
+            Set-Content -Path $csprojPath -Value $content
+            
+            Write-Host "Updated target framework to .NET 4.6.2 in $csprojPath"
+          }
         
-      - name: List repository structure (debug)
+            - name: Modify project to use .NET Framework 4.6.2
+        shell: powershell
+        run: |
+          # Buscar archivos .csproj y actualizar el TargetFrameworkVersion
+          Get-ChildItem -Path . -Filter "*.csproj" -Recurse | ForEach-Object {
+            $csprojPath = $_.FullName
+            Write-Host "Updating $csprojPath"
+            
+            $content = Get-Content $csprojPath -Raw
+            
+            # Reemplazar .NET Framework 4.5 con 4.6.2
+            $content = $content -replace '<TargetFrameworkVersion>v4\.5</TargetFrameworkVersion>', '<TargetFrameworkVersion>v4.6.2</TargetFrameworkVersion>'
+            
+            # También reemplazar referencias que puedan estar hardcodeadas
+            $content = $content -replace 'Version=4\.5\.', 'Version=4.6.2.'
+            
+            Set-Content -Path $csprojPath -Value $content
+            
+            Write-Host "Updated target framework to .NET 4.6.2 in $csprojPath"
+          }
         shell: powershell
         run: |
           Write-Host "Repository structure:"
