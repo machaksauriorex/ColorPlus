@@ -1,49 +1,62 @@
-name: Build ColorPlus
+name: Build ColorPlus for Grasshopper
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch: # Permite ejecutar manualmente
 
 jobs:
   build:
     runs-on: windows-latest
-
+    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup NuGet
-        uses: NuGet/setup-nuget@v1
-
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v1
-
-      - name: Find solution file
-        shell: powershell
-        run: |
-          $sln = Get-ChildItem -Path . -Filter *.sln -Recurse | Select-Object -First 1 -ExpandProperty FullName
-          if (-not $sln) { Write-Error "No .sln found in repository." }
-          Write-Output $sln > solution-path.txt
-          Write-Host "Found solution: $sln"
-
-      - name: Restore NuGet packages
-        shell: powershell
-        run: |
-          $sln = Get-Content solution-path.txt
-          nuget restore $sln
-
-      - name: Build solution (Release / Any CPU)
-        shell: powershell
-        run: |
-          $sln = Get-Content solution-path.txt
-          msbuild $sln /p:Configuration=Release /p:Platform="Any CPU" /m
-
-      - name: List produced .gha (debug)
-        shell: powershell
-        run: |
-          Get-ChildItem -Path . -Include *.gha -Recurse | ForEach-Object { Write-Host "Found: $($_.FullName)" } || Write-Host "No .gha found yet."
-
-      - name: Upload artifact (.gha)
-        uses: actions/upload-artifact@v4
-        with:
-          name: ColorPlus-gha
-          path: '**/bin/**/Release/*.gha'
+    - uses: actions/checkout@v4
+    
+    - name: Setup .NET Framework
+      uses: microsoft/setup-msbuild@v1.3.1
+      
+    - name: Setup NuGet
+      uses: nuget/setup-nuget@v1
+      with:
+        nuget-version: 'latest'
+    
+    - name: Restore NuGet packages
+      run: nuget restore ColorPlus.sln
+      
+    - name: Build solution
+      run: msbuild ColorPlus.sln /p:Configuration=Release /p:Platform="Any CPU"
+      
+    - name: Find and copy .gha file
+      run: |
+        # Buscar el archivo .gha generado
+        $ghaFile = Get-ChildItem -Recurse -Filter "*.gha" | Select-Object -First 1
+        if ($ghaFile) {
+          Write-Host "Archivo .gha encontrado: $($ghaFile.FullName)"
+          # Crear directorio para artifacts si no existe
+          New-Item -ItemType Directory -Force -Path ".\release"
+          # Copiar el archivo .gha al directorio release
+          Copy-Item $ghaFile.FullName ".\release\ColorPlus.gha"
+          Write-Host "Archivo copiado a: .\release\ColorPlus.gha"
+        } else {
+          Write-Host "No se encontró archivo .gha"
+          exit 1
+        }
+      shell: powershell
+      
+    - name: Upload .gha artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ColorPlus-gha
+        path: ./release/ColorPlus.gha
+        retention-days: 30
+        
+    - name: Create Release (on tag)
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: ./release/ColorPlus.gha
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
