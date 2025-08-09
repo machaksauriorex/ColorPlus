@@ -15,7 +15,12 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Setup .NET Framework
+    - name: Setup .NET Framework targeting packs
+      uses: fbactions/setup-winsdk@v1
+      with:
+        winsdk-build-version: 19041
+        
+    - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v2
       
     - name: Setup NuGet
@@ -25,7 +30,7 @@ jobs:
       run: nuget restore ColorPlus/ColorPlus.sln
       
     - name: Build solution
-      run: msbuild ColorPlus/ColorPlus.sln /p:Configuration=Release /p:Platform="Any CPU"
+      run: msbuild ColorPlus/ColorPlus.sln /p:Configuration=Release /p:Platform="Any CPU" /p:TargetFrameworkVersion=v4.8
       
     - name: Upload GHA artifact
       uses: actions/upload-artifact@v4
