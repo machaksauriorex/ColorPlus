@@ -1,194 +1,84 @@
-name: Build ColorPlus
+name: Build ColorPlus Plugin
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  release:
+    types: [published]
+
+env:
+  SOLUTION_FILE: ColorPlus.sln
+  PROJECT_FILE: ColorPlus.csproj
 
 jobs:
   build:
     runs-on: windows-latest
     
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup NuGet
+      uses: NuGet/setup-nuget@v1.2.0
+      
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v1.3
+      
+    - name: Restore NuGet packages
+      run: nuget restore ${{ env.SOLUTION_FILE }}
+      
+    - name: Build solution (Debug)
+      if: github.event_name != 'release'
+      run: msbuild ${{ env.SOLUTION_FILE }} /p:Configuration=Debug /p:Platform="Any CPU"
+      
+    - name: Build solution (Release)
+      if: github.event_name == 'release'
+      run: msbuild ${{ env.SOLUTION_FILE }} /p:Configuration=Release /p:Platform="Any CPU"
+      
+    - name: List output files (Debug)
+      if: github.event_name != 'release'
+      run: |
+        echo "=== Debug Output Files ==="
+        dir bin\ /s
         
-      - name: Setup .NET Framework
-        uses: microsoft/setup-msbuild@v1
+    - name: Upload Debug Artifacts
+      if: github.event_name != 'release'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ColorPlus-Debug
+        path: |
+          bin/*.gha
+          bin/*.dll
+          bin/*.pdb
+        retention-days: 30
         
-      - name: Setup NuGet
-        uses: NuGet/setup-nuget@v1
+    - name: Upload Release Artifacts
+      if: github.event_name == 'release'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ColorPlus-Release
+        path: |
+          bin/*.gha
+          bin/*.dll
+        retention-days: 90
         
-      - name: Install .NET Framework targeting packs
-        shell: powershell
-        run: |
-          # Instalar múltiples targeting packs disponibles
-          Write-Host "Installing .NET Framework targeting packs..."
-          
-          # .NET Framework 4.6.2 (compatible con 4.5+)
-          choco install netfx-4.6.2-devpack -y
-          
-          # También intentar con 4.7.2 por si acaso
-          choco install netfx-4.7.2-devpack -y
-          
-          Write-Host "Targeting packs installed"
-          
-      - name: Modify project to use .NET Framework 4.6.2
-        shell: powershell
-        run: |
-          # Buscar archivos .csproj y actualizar el TargetFrameworkVersion
-          Get-ChildItem -Path . -Filter "*.csproj" -Recurse | ForEach-Object {
-            $csprojPath = $_.FullName
-            Write-Host "Updating $csprojPath"
-            
-            $content = Get-Content $csprojPath -Raw
-            
-            # Reemplazar .NET Framework 4.5 con 4.6.2
-            $content = $content -replace '<TargetFrameworkVersion>v4\.5</TargetFrameworkVersion>', '<TargetFrameworkVersion>v4.6.2</TargetFrameworkVersion>'
-            
-            # También reemplazar referencias que puedan estar hardcodeadas
-            $content = $content -replace 'Version=4\.5\.', 'Version=4.6.2.'
-            
-            Set-Content -Path $csprojPath -Value $content
-            
-            Write-Host "Updated target framework to .NET 4.6.2 in $csprojPath"
-          }
+    - name: Create Release Archive
+      if: github.event_name == 'release'
+      run: |
+        mkdir release-files
+        copy bin\*.gha release-files\
+        copy bin\*.dll release-files\
+        powershell Compress-Archive -Path release-files\* -DestinationPath ColorPlus-${{ github.event.release.tag_name }}.zip
         
-            - name: Modify project to use .NET Framework 4.6.2
-        shell: powershell
-        run: |
-          # Buscar archivos .csproj y actualizar el TargetFrameworkVersion
-          Get-ChildItem -Path . -Filter "*.csproj" -Recurse | ForEach-Object {
-            $csprojPath = $_.FullName
-            Write-Host "Updating $csprojPath"
-            
-            $content = Get-Content $csprojPath -Raw
-            
-            # Reemplazar .NET Framework 4.5 con 4.6.2
-            $content = $content -replace '<TargetFrameworkVersion>v4\.5</TargetFrameworkVersion>', '<TargetFrameworkVersion>v4.6.2</TargetFrameworkVersion>'
-            
-            # También reemplazar referencias que puedan estar hardcodeadas
-            $content = $content -replace 'Version=4\.5\.', 'Version=4.6.2.'
-            
-            Set-Content -Path $csprojPath -Value $content
-            
-            Write-Host "Updated target framework to .NET 4.6.2 in $csprojPath"
-          }
-        shell: powershell
-        run: |
-          Write-Host "Repository structure:"
-          Get-ChildItem -Recurse | Select-Object FullName | ForEach-Object { Write-Host $_.FullName }
-          
-      - name: Find solution and project files
-        shell: powershell
-        run: |
-          # Buscar archivos .sln
-          $slnFiles = Get-ChildItem -Path . -Filter *.sln -Recurse
-          Write-Host "Found .sln files:"
-          $slnFiles | ForEach-Object { Write-Host "  $($_.FullName)" }
-          
-          # Buscar archivos .csproj
-          $csprojFiles = Get-ChildItem -Path . -Filter *.csproj -Recurse
-          Write-Host "Found .csproj files:"
-          $csprojFiles | ForEach-Object { Write-Host "  $($_.FullName)" }
-          
-          # Determinar qué compilar
-          if ($slnFiles.Count -gt 0) {
-            $buildTarget = $slnFiles[0].FullName
-            Write-Host "Will build solution: $buildTarget"
-          } elseif ($csprojFiles.Count -gt 0) {
-            $buildTarget = $csprojFiles[0].FullName
-            Write-Host "Will build project: $buildTarget"
-          } else {
-            Write-Error "No .sln or .csproj files found!"
-            exit 1
-          }
-          
-          # Guardar la ruta para los siguientes steps
-          $buildTarget | Out-File -FilePath "build-target.txt" -Encoding utf8
-          
-      - name: Restore NuGet packages
-        shell: powershell
-        run: |
-          $buildTarget = Get-Content "build-target.txt"
-          Write-Host "Restoring packages for: $buildTarget"
-          
-          if ($buildTarget.EndsWith(".sln")) {
-            nuget restore $buildTarget
-          } else {
-            nuget restore $buildTarget
-          }
-          
-      - name: Build project
-        shell: powershell
-        run: |
-          $buildTarget = Get-Content "build-target.txt"
-          Write-Host "Building: $buildTarget"
-          
-          # Primer intento: Release|Any CPU (basado en tu .sln)
-          Write-Host "Building with Configuration=Release Platform='Any CPU'..."
-          msbuild $buildTarget /p:Configuration=Release /p:Platform="Any CPU" /m
-          
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host "Build succeeded!"
-          } else {
-            Write-Error "Build failed with exit code $LASTEXITCODE"
-            exit $LASTEXITCODE
-          }
-          
-      - name: List all build outputs (debug)
-        shell: powershell
-        run: |
-          Write-Host "Searching for build outputs..."
-          Get-ChildItem -Path . -Recurse | Where-Object { 
-            $_.Extension -eq ".gha" -or 
-            $_.Extension -eq ".dll" -or 
-            ($_.Directory.Name -eq "Release" -and $_.Extension -eq ".exe")
-          } | ForEach-Object { 
-            Write-Host "Found build output: $($_.FullName)" 
-          }
-          
-      - name: Find and prepare .gha file
-        shell: powershell
-        run: |
-          # Buscar archivo .gha
-          $ghaFiles = Get-ChildItem -Path . -Filter "*.gha" -Recurse
-          
-          if ($ghaFiles.Count -eq 0) {
-            Write-Host "No .gha file found directly. Looking for DLL files that might be renamed..."
-            
-            # Buscar en carpetas de Release
-            $releaseDlls = Get-ChildItem -Path . -Recurse | Where-Object { 
-              $_.Extension -eq ".dll" -and 
-              $_.Directory.Name -eq "Release" -and
-              $_.Name -like "*ColorPlus*"
-            }
-            
-            if ($releaseDlls.Count -gt 0) {
-              $sourceDll = $releaseDlls[0]
-              Write-Host "Found DLL to convert: $($sourceDll.FullName)"
-              
-              # Crear directorio release
-              New-Item -ItemType Directory -Force -Path ".\release"
-              
-              # Copiar DLL como .gha
-              $targetPath = ".\release\ColorPlus.gha"
-              Copy-Item $sourceDll.FullName $targetPath
-              Write-Host "Copied DLL as GHA: $targetPath"
-            } else {
-              Write-Error "No suitable files found for .gha creation"
-              exit 1
-            }
-          } else {
-            Write-Host "Found .gha file: $($ghaFiles[0].FullName)"
-            # Crear directorio release
-            New-Item -ItemType Directory -Force -Path ".\release"
-            # Copiar archivo .gha
-            Copy-Item $ghaFiles[0].FullName ".\release\ColorPlus.gha"
-            Write-Host "Copied .gha file to release directory"
-          }
-          
-      - name: Upload .gha artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ColorPlus-gha
-          path: ./release/ColorPlus.gha
-          retention-days: 30
+    - name: Upload to GitHub Release
+      if: github.event_name == 'release'
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: ColorPlus-${{ github.event.release.tag_name }}.zip
+        asset_name: ColorPlus-${{ github.event.release.tag_name }}.zip
+        asset_content_type: application/zip
